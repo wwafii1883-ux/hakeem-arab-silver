@@ -1,0 +1,90 @@
+//@version=5
+indicator("حكيم العرب - إشارات الفضي | Hakeem Arab - Silver Signals", shorttitle="حكيم العرب", overlay=true)
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════ //
+// ============================== المتغيرات والإعدادات | Variables & Settings ========================== //
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════ //
+
+// FVG Settings | إعدادات فجوة القيمة العادلة
+var bool showFVG = input.bool(true, "Show FVG", group="FVG Settings")
+var float fvgThreshold = input.float(0.1, "FVG Threshold", minval=0.01, maxval=1.0, step=0.01, group="FVG Settings")
+
+// CISD Settings | إعدادات نمط الشموع
+var bool showCISD = input.bool(true, "Show CISD Pattern", group="CISD Settings")
+var int cisdLength = input.int(14, "CISD Length", minval=1, maxval=50, group="CISD Settings")
+
+// SMT Settings | إعدادات نظرية المال الذكي
+var bool showSMT = input.bool(true, "Show Smart Money Theory", group="SMT Settings")
+var float volumeThreshold = input.float(1.5, "Volume Threshold", minval=1.0, maxval=5.0, step=0.1, group="SMT Settings")
+
+// Session Settings | إعدادات الجلسة
+var bool nySessionOnly = input.bool(false, "New York Session Only", group="Session Settings")
+var string sessionStart = input.session("14:30-21:00", "NY Session", group="Session Settings")
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════ //
+// ============================ دوال القواعد الفنية | Technical Rules Functions ======================= //
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════ //
+
+// Fair Value Gap Detection | كشف فجوة القيمة العادلة
+detectFVG(high, low, threshold) =>
+    var float fvgUp = na
+    var float fvgDown = na
+    
+    if high[2] < low
+        fvgUp := low
+    if low[2] > high
+        fvgDown := high
+    
+    [fvgUp, fvgDown]
+
+// CISD Pattern Detection | كشف نمط الشموع الانعكاسية
+detectCISD(high, low, close, length) =>
+    var float bodySize = math.abs(close - open)
+    var float upperWick = high - math.max(close, open)
+    var float lowerWick = math.min(close, open) - low
+    
+    bullishCISD = lowerWick > bodySize * 2 and bodySize > 0
+    bearishCISD = upperWick > bodySize * 2 and bodySize > 0
+    
+    [bullishCISD, bearishCISD]
+
+// Smart Money Theory | نظرية المال الذكي
+detectSMT(close, volume, threshold) =>
+    var float avgVol = ta.sma(volume, 20)
+    var bool smartMoneyBuy = volume > avgVol * threshold and close > close[1]
+    var bool smartMoneySell = volume > avgVol * threshold and close < close[1]
+    
+    [smartMoneyBuy, smartMoneySell]
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════ //
+// =============================== حساب الإشارات | Signal Calculation ============================== //
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════ //
+
+[fvgUp, fvgDown] = detectFVG(high, low, fvgThreshold)
+[bullishCISD, bearishCISD] = detectCISD(high, low, close, cisdLength)
+[smartMoneyBuy, smartMoneySell] = detectSMT(close, volume, volumeThreshold)
+
+var bool inSession = not nySessionOnly or time(timeframe.period, sessionStart)
+
+// Combined Signals | الإشارات المجمعة
+buySignal = inSession and bullishCISD and smartMoneyBuy and not na(fvgUp)
+sellSignal = inSession and bearishCISD and smartMoneySell and not na(fvgDown)
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════ //
+// ================================ العرض المرئي | Visual Display ================================= //
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════ //
+
+// Plot FVG
+if showFVG
+    var fvgUpColor = color.new(color.green, 80)
+    var fvgDownColor = color.new(color.red, 80)
+    bgcolor(not na(fvgUp) ? fvgUpColor : na)
+    bgcolor(not na(fvgDown) ? fvgDownColor : na)
+
+// Plot Signals
+plotshape(buySignal, "Buy Signal", shape.triangleup, location.belowbar, color.green, size=size.small)
+plotshape(sellSignal, "Sell Signal", shape.triangledown, location.abovebar, color.red, size=size.small)
+
+// Alerts | التنبيهات
+alertcondition(buySignal, "Buy Signal Alert", "Strong buy signal detected")
+alertcondition(sellSignal, "Sell Signal Alert", "Strong sell signal detected")
